@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String       @id @default(cuid())
+  email           String       @unique
+  peopleCount     Int          @default(2)
+  adultsCount     Int?
+  childrenCount   Int?
+  preferencesJson String       @default("{}")
+  pantryItems     PantryItem[]
+  mealPlans       MealPlan[]
+  generationLogs  GenerationLog[]
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+}
+
+model PantryItem {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  quantityText String?
+  expiryDate   DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Store {
+  id          String                 @id @default(cuid())
+  key         String                 @unique
+  name        String
+  enabled     Boolean                @default(true)
+  offers      Offer[]
+  statuses    StoreConnectorStatus[]
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+}
+
+model StoreConnectorStatus {
+  id            String   @id @default(cuid())
+  storeId        String
+  store          Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  lastRefreshAt  DateTime?
+  lastSuccessAt  DateTime?
+  lastError      String?
+  itemCount      Int      @default(0)
+  sourceHash     String?
+  updatedAt      DateTime @updatedAt
+
+  @@unique([storeId])
+}
+
+model Offer {
+  id             String   @id @default(cuid())
+  storeId        String
+  store          Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  productName    String
+  brand          String?
+  sizeText       String?
+  priceDkk       Float
+  unitPriceDkk   Float?
+  validFrom      DateTime
+  validTo        DateTime
+  category       String?
+  rawText        String?
+  sourceUrl      String?
+  flyerRef       String?
+  createdAt      DateTime @default(now())
+
+  @@index([storeId, validTo])
+  @@index([productName])
+}
+
+model MealPlan {
+  id          String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekStart    DateTime
+  shareToken   String   @unique
+  planJson     String
+  scoreBreakdown String?
+  createdAt    DateTime @default(now())
+
+  @@index([userId, weekStart])
+}
+
+model GenerationLog {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
