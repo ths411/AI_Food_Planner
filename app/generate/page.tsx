@@ -39,6 +39,18 @@ export default function GeneratePage() {
 
   const selectedStores = useMemo(() => stores.split(",").map((item) => item.trim()).filter(Boolean), [stores]);
 
+  async function readJsonSafe(response: Response) {
+    const raw = await response.text();
+    if (!raw) {
+      return {};
+    }
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return { error: `Invalid server response (${response.status})`, raw };
+    }
+  }
+
   useEffect(() => {
     const stored = localStorage.getItem("planner-email");
     if (stored) {
@@ -48,7 +60,7 @@ export default function GeneratePage() {
 
   async function loadSettings() {
     const response = await fetch(`/api/settings?email=${encodeURIComponent(email)}`);
-    const payload = await response.json();
+    const payload = await readJsonSafe(response);
     if (!response.ok) {
       return;
     }
@@ -60,13 +72,13 @@ export default function GeneratePage() {
   async function loadOffers() {
     const query = selectedStores.map((key) => `store=${encodeURIComponent(key)}`).join("&");
     const response = await fetch(`/api/offers?${query}`);
-    const payload = await response.json();
+    const payload = await readJsonSafe(response);
     if (!response.ok) {
-      setStatus(payload.error ?? "Failed to load offers");
+      setStatus(String(payload.error ?? "Failed to load offers"));
       return;
     }
-    setStatusRows(payload.status);
-    setOffers(payload.offers);
+    setStatusRows((payload.status as OfferStatus[]) ?? []);
+    setOffers((payload.offers as OfferRow[]) ?? []);
   }
 
   useEffect(() => {
@@ -84,9 +96,9 @@ export default function GeneratePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ stores: selectedStores })
     });
-    const payload = await response.json();
+    const payload = await readJsonSafe(response);
     if (!response.ok) {
-      setStatus(payload.error ?? "Offer refresh failed");
+      setStatus(String(payload.error ?? "Offer refresh failed"));
       return;
     }
     await loadOffers();
@@ -98,9 +110,9 @@ export default function GeneratePage() {
     setStatus("Generating 3 candidates and reranking...");
 
     const settingsResponse = await fetch(`/api/settings?email=${encodeURIComponent(email)}`);
-    const settingsPayload = await settingsResponse.json();
+    const settingsPayload = await readJsonSafe(settingsResponse);
     if (!settingsResponse.ok) {
-      setStatus(settingsPayload.error ?? "Could not load settings");
+      setStatus(String(settingsPayload.error ?? "Could not load settings"));
       return;
     }
 
@@ -114,20 +126,24 @@ export default function GeneratePage() {
         mealMode,
         timeCapMinutes: timeCapMinutes === "" ? undefined : Number(timeCapMinutes),
         preferences: {
-          ...settingsPayload.user.preferences,
+          ...((settingsPayload.user as { preferences?: Record<string, unknown> } | undefined)?.preferences ?? {}),
           selectedStores
         }
       })
     });
 
-    const payload = await response.json();
+    const payload = await readJsonSafe(response);
     if (!response.ok) {
-      setStatus(payload.error ?? "Generation failed");
+      setStatus(String(payload.error ?? "Generation failed"));
       return;
     }
 
-    setStatus(payload.emailed ? "Generated and emailed" : `Generated (email failed: ${payload.emailError ?? "unknown"})`);
-    router.push(`/results/${payload.shareToken}`);
+    const emailed = Boolean(payload.emailed);
+    const shareToken = String(payload.shareToken ?? "");
+    setStatus(emailed ? "Generated and emailed" : `Generated (email failed: ${String(payload.emailError ?? "unknown")})`);
+    if (shareToken) {
+      router.push(`/results/${shareToken}`);
+    }
   }
 
   return (
